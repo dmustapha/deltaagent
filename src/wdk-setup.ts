@@ -62,9 +62,9 @@ export async function getWalletAddress(wdk: WDK): Promise<string> {
 /**
  * Get the Aave lending module from the WDK account.
  */
-export async function getAaveLending(wdk: WDK) {
+export async function getAaveLending(wdk: WDK): Promise<AaveLendingProtocol> {
   const account = await wdk.getAccount(BLOCKCHAIN);
-  return account.getLendingProtocol('aave');
+  return account.getLendingProtocol('aave') as unknown as AaveLendingProtocol;
 }
 
 /**
