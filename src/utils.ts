@@ -11,21 +11,33 @@ export function computeSMA(prices: number[], period: number): number | null {
 }
 
 /**
- * Relative Strength Index over the last `period + 1` values.
+ * Relative Strength Index using Wilder's smoothed moving average.
  * Returns null if fewer than `period + 1` values available.
  */
 export function computeRSI(prices: number[], period: number): number | null {
   if (prices.length < period + 1) return null;
   const slice = prices.slice(-(period + 1));
-  let gains = 0;
-  let losses = 0;
-  for (let i = 1; i < slice.length; i++) {
+
+  // Seed with simple average over the first `period` changes
+  let avgGain = 0;
+  let avgLoss = 0;
+  for (let i = 1; i <= period; i++) {
     const change = slice[i] - slice[i - 1];
-    if (change > 0) gains += change;
-    else losses += Math.abs(change);
+    if (change > 0) avgGain += change;
+    else avgLoss += Math.abs(change);
   }
-  const avgGain = gains / period;
-  const avgLoss = losses / period;
+  avgGain /= period;
+  avgLoss /= period;
+
+  // Apply Wilder's smoothing for remaining values
+  for (let i = period + 1; i < slice.length; i++) {
+    const change = slice[i] - slice[i - 1];
+    const gain = change > 0 ? change : 0;
+    const loss = change < 0 ? Math.abs(change) : 0;
+    avgGain = (avgGain * (period - 1) + gain) / period;
+    avgLoss = (avgLoss * (period - 1) + loss) / period;
+  }
+
   if (avgLoss === 0) return 100;
   const rs = avgGain / avgLoss;
   return 100 - (100 / (1 + rs));
@@ -111,41 +123,50 @@ export function padAddress(address: string): string {
 
 /**
  * Format bigint WETH (18 decimals) to human-readable string.
+ * Handles negative values (e.g., unrealized P&L).
  */
 export function formatWeth(wei: bigint): string {
-  const whole = wei / 10n ** 18n;
-  const frac = wei % 10n ** 18n;
+  const negative = wei < 0n;
+  const abs = negative ? -wei : wei;
+  const whole = abs / 10n ** 18n;
+  const frac = abs % 10n ** 18n;
   const fracStr = frac.toString().padStart(18, '0').slice(0, 4);
-  return `${whole}.${fracStr}`;
+  return `${negative ? '-' : ''}${whole}.${fracStr}`;
 }
 
 /**
  * Format bigint USDT0 (6 decimals) to human-readable string.
+ * Handles negative values.
  */
 export function formatUsdt(amount: bigint): string {
-  const whole = amount / 10n ** 6n;
-  const frac = amount % 10n ** 6n;
+  const negative = amount < 0n;
+  const abs = negative ? -amount : amount;
+  const whole = abs / 10n ** 6n;
+  const frac = abs % 10n ** 6n;
   const fracStr = frac.toString().padStart(6, '0').slice(0, 2);
-  return `${whole}.${fracStr}`;
+  return `${negative ? '-' : ''}${whole}.${fracStr}`;
 }
 
 /**
  * Calculate max safe WETH withdrawal from Aave without liquidation.
- * Returns the amount in WETH (18 decimals).
+ * Returns the amount in WETH (18 decimals), or null if no debt (caller decides amount).
+ *
+ * Uses liquidationThreshold (not LTV) as the safety floor — LTV is the borrow limit,
+ * liquidationThreshold is when liquidation can actually occur.
  */
 export function calcMaxSafeWithdraw(
   totalCollateralBase: bigint,
   totalDebtBase: bigint,
-  ltv: bigint,
+  liquidationThreshold: bigint,
   ethPriceUsd: number
-): bigint {
+): bigint | null {
   if (totalDebtBase === 0n) {
-    // No debt — can withdraw everything
-    // Return a sentinel; caller should use type(uint256).max or total collateral
-    return 2n ** 255n;
+    // No debt — caller should withdraw total collateral
+    return null;
   }
-  // Minimum collateral to maintain position (base currency, 8 decimals)
-  const minCollateralBase = totalDebtBase * 10000n / ltv;
+  // Minimum collateral to stay above liquidation (base currency, 8 decimals)
+  // liquidationThreshold is in basis points (e.g. 8250 = 82.5%)
+  const minCollateralBase = totalDebtBase * 10000n / liquidationThreshold;
   const excessBase = totalCollateralBase - minCollateralBase;
   if (excessBase <= 0n) return 0n;
   // 90% safety margin to account for price movement during tx
