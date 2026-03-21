@@ -1,0 +1,27 @@
+{
+  "name": "deltaagent",
+  "version": "1.0.0",
+  "description": "AI agent managing leveraged ETH positions on Aave V3 via WDK",
+  "type": "module",
+  "main": "src/index.ts",
+  "scripts": {
+    "start": "npx tsx src/index.ts",
+    "dev": "USE_MOCK_LLM=true npx tsx src/index.ts",
+    "fund": "bash scripts/fund-demo.sh",
+    "get-address": "npx tsx -e \"import {initWdk,getWalletAddress} from './src/wdk-setup.js'; initWdk().then(w=>getWalletAddress(w)).then(a=>console.log('Wallet:',a))\""
+  },
+  "dependencies": {
+    "@tetherto/wdk": "1.0.0-beta.6",
+    "@tetherto/wdk-wallet-evm": "1.0.0-beta.10",
+    "@tetherto/wdk-wallet-evm-erc-4337": "1.0.0-beta.5",
+    "@tetherto/wdk-protocol-lending-aave-evm": "1.0.0-beta.3",
+    "@tetherto/wdk-protocol-swap-velora-evm": "1.0.0-beta.4",
+    "@tetherto/wdk-pricing-bitfinex-http": "1.0.0-beta.2",
+    "groq-sdk": "1.1.1",
+    "dotenv": "16.4.7"
+  },
+  "devDependencies": {
+    "typescript": "5.7.3",
+    "@types/node": "20.17.16"
+  }
+}
