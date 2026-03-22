@@ -11,13 +11,53 @@ import type {
 import { config } from './config.js';
 import { logError } from './logger.js';
 import { calcMaxSafeWithdraw } from './utils.js';
-import { getAaveLending, getVeloraSwap, getAccount, getPricingClient } from './wdk-setup.js';
+import { getAaveLending, getVeloraSwap, getAccount, getPricingClient, uniswapSwap, rawApproveAndSupply } from './wdk-setup.js';
 import type WDK from '@tetherto/wdk';
 import type { WalletAccountEvm } from '@tetherto/wdk-wallet-evm';
 
 const WETH = config.addresses.weth;
 const USDT0 = config.addresses.usdt0;
 const AAVE_POOL = config.addresses.aavePool;
+
+/**
+ * Wait for a transaction to be mined.
+ * Prevents nonce collisions when WDK's ethers provider hasn't seen confirmations yet.
+ */
+async function waitForTx(hash: string, maxWaitMs = 15_000): Promise<void> {
+  const start = Date.now();
+  while (Date.now() - start < maxWaitMs) {
+    const res = await fetch(config.rpcUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', method: 'eth_getTransactionReceipt', params: [hash], id: 1 }),
+    });
+    const json = (await res.json()) as { result?: { status: string } | null };
+    if (json.result?.status) return;
+    await new Promise(r => setTimeout(r, 500));
+  }
+}
+
+/**
+ * Swap with Velora→Uniswap V3 fallback.
+ * Tries Velora first (WDK native). If blacklisted, falls back to direct Uniswap V3 SwapRouter.
+ * Slippage protection: minAmountOut enforced on-chain by Uniswap.
+ */
+async function swapWithFallback(
+  wdk: WDK,
+  tokenIn: string,
+  tokenOut: string,
+  amountIn: bigint,
+  minAmountOut: bigint
+): Promise<{ hash: string; amountOut: bigint }> {
+  try {
+    const swap = await getVeloraSwap(wdk);
+    const result: WdkSwapResult = await swap.swap({ tokenIn, tokenOut, tokenInAmount: amountIn });
+    return { hash: result.hash, amountOut: result.tokenOutAmount };
+  } catch (veloraError) {
+    console.warn(`[Swap] Velora failed: ${veloraError instanceof Error ? veloraError.message : String(veloraError)}. Falling back to Uniswap V3.`);
+    return uniswapSwap(wdk, tokenIn, tokenOut, amountIn, minAmountOut);
+  }
+}
 
 /**
  * Approve a token for the Aave Pool spender.
@@ -69,14 +109,29 @@ async function executeLeverage(
   let totalGas = 0n;
 
   const lending = await getAaveLending(wdk);
-  const swap = await getVeloraSwap(wdk);
   const pricing = getPricingClient();
 
   try {
-    // Determine supply amount
-    const supplyAmount = position.isOpen
-      ? config.agent.initialCollateralWei / 2n  // INCREASE: add half
-      : config.agent.initialCollateralWei;       // OPEN: full initial
+    const targetLeverage = decision.parameters?.targetLeverage ?? 1.5;
+    const ethPrice = await pricing.getCurrentPrice('ETH', 'USD');
+    const ethPriceScaled = BigInt(Math.floor(ethPrice * 1e6));
+
+    // Determine supply amount — Fix #6: INCREASE computes delta to reach target leverage
+    let supplyAmount: bigint;
+    if (position.isOpen) {
+      // INCREASE: compute how much additional collateral needed to reach targetLeverage
+      // currentLeverage = collateralUsd / equityUsd
+      // To reach targetLeverage, need: additionalBorrow = equity * (target - current)
+      // Then supply that as WETH. Simplified: supply = initialCollateral * (target - currentLeverage) / target
+      const delta = targetLeverage - position.leverageRatio;
+      if (delta <= 0) {
+        return { success: true, action: decision.action, steps, gasUsed: totalGas };
+      }
+      const deltaWei = BigInt(Math.floor(Number(config.agent.initialCollateralWei / 10n ** 18n) * delta / targetLeverage * 1e18));
+      supplyAmount = deltaWei > 0n ? deltaWei : config.agent.initialCollateralWei / 4n;
+    } else {
+      supplyAmount = config.agent.initialCollateralWei;
+    }
 
     // Step 1: Approve + Supply WETH to Aave
     await approveForPool(wdk, WETH, supplyAmount);
@@ -93,16 +148,8 @@ async function executeLeverage(
     totalGas += supplyResult.fee;
 
     // Step 2: Calculate borrow amount based on target leverage
-    // Units: USDT0 has 6 decimals. We use 1e6 scaling for USD price and multiplier.
-    const targetLeverage = decision.parameters?.targetLeverage ?? 1.5;
-    const ethPrice = await pricing.getCurrentPrice('ETH', 'USD');
-    // ethPriceScaled: USD per ETH, scaled by 1e6 (e.g., $2000 → 2_000_000_000n)
-    const ethPriceScaled = BigInt(Math.floor(ethPrice * 1e6));
-    // collateralValueUsdt: WETH amount (18 dec) × price (6 dec) / 1e18 = USDT0 amount (6 dec)
     const collateralValueUsdt = supplyAmount * ethPriceScaled / 10n ** 18n;
-    // leverageMultiplier: (leverage - 1) scaled by 1e6 (e.g., 0.5× → 500_000n)
     const leverageMultiplier = BigInt(Math.floor((targetLeverage - 1) * 1e6));
-    // borrowAmount: USDT0 (6 dec) × multiplier (6 dec) / 1e6 = USDT0 (6 dec)
     const borrowAmount = collateralValueUsdt * leverageMultiplier / 1_000_000n;
 
     if (borrowAmount <= 0n) {
@@ -122,33 +169,28 @@ async function executeLeverage(
     });
     totalGas += borrowResult.fee;
 
-    // Step 4: Swap USDT0 → WETH via Velora
-    const swapResult: WdkSwapResult = await swap.swap({
-      tokenIn: USDT0,
-      tokenOut: WETH,
-      tokenInAmount: borrowAmount,
-    });
+    // Step 4: Swap USDT0 → WETH with slippage protection (5% tolerance)
+    // minWethOut = borrowAmount(6dec) * 1e12 * 95 / (ethPriceScaled(6dec) * 100)
+    const minWethOut = borrowAmount * 10n ** 12n * 95n / (ethPriceScaled * 100n);
+    const swapResult = await swapWithFallback(wdk, USDT0, WETH, borrowAmount, minWethOut);
     steps.push({
       operation: 'swap',
       hash: swapResult.hash,
-      amount: swapResult.tokenOutAmount.toString(),
+      amount: swapResult.amountOut.toString(),
       success: true,
     });
-    totalGas += swapResult.fee;
 
-    // Step 5: Approve + Re-supply swapped WETH to Aave
-    await approveForPool(wdk, WETH, swapResult.tokenOutAmount);
-    const reSupplyResult: WdkLendingResult = await lending.supply({
-      token: WETH,
-      amount: swapResult.tokenOutAmount,
-    });
+    // Step 5: Re-supply swapped WETH to Aave
+    // Use rawApproveAndSupply (same sendTransaction path as uniswapSwap) to avoid
+    // nonce desync between WDK's lending module and the raw account signer.
+    await waitForTx(swapResult.hash);
+    const reSupplyResult = await rawApproveAndSupply(wdk, WETH, swapResult.amountOut);
     steps.push({
       operation: 'supply',
       hash: reSupplyResult.hash,
-      amount: swapResult.tokenOutAmount.toString(),
+      amount: swapResult.amountOut.toString(),
       success: true,
     });
-    totalGas += reSupplyResult.fee;
 
     return { success: true, action: decision.action, steps, gasUsed: totalGas };
   } catch (error) {
@@ -171,7 +213,6 @@ async function executeDeleverage(
   let totalGas = 0n;
 
   const lending = await getAaveLending(wdk);
-  const swap = await getVeloraSwap(wdk);
   const pricing = getPricingClient();
 
   try {
@@ -215,26 +256,23 @@ async function executeDeleverage(
     });
     totalGas += withdrawResult.fee;
 
-    // Step 2: Swap WETH → USDT0 via Velora
-    const swapResult: WdkSwapResult = await swap.swap({
-      tokenIn: WETH,
-      tokenOut: USDT0,
-      tokenInAmount: withdrawAmount,
-    });
+    // Step 2: Swap WETH → USDT0 with slippage protection (5% tolerance)
+    // minUsdtOut = withdrawAmount(18dec) * ethPrice(USD) * 0.95, scaled to 6 decimals
+    const minUsdtOut = withdrawAmount * BigInt(Math.floor(ethPrice * 0.95 * 1e6)) / 10n ** 18n;
+    const swapResult = await swapWithFallback(wdk, WETH, USDT0, withdrawAmount, minUsdtOut);
     steps.push({
       operation: 'swap',
       hash: swapResult.hash,
-      amount: swapResult.tokenOutAmount.toString(),
+      amount: swapResult.amountOut.toString(),
       success: true,
     });
-    totalGas += swapResult.fee;
 
     // Step 3: Repay USDT0 debt — refresh accountData for accurate debt
     // Aave base currency = 8 decimals, USDT0 = 6 decimals → divide by 100
     const freshData = await lending.getAccountData();
     const currentDebtUsdt = freshData.totalDebtBase / 100n;
-    const repayAmount = swapResult.tokenOutAmount < currentDebtUsdt
-      ? swapResult.tokenOutAmount
+    const repayAmount = swapResult.amountOut < currentDebtUsdt
+      ? swapResult.amountOut
       : currentDebtUsdt;
 
     await approveForPool(wdk, USDT0, repayAmount);
@@ -270,7 +308,6 @@ async function executeClose(
   let totalGas = 0n;
 
   const lending = await getAaveLending(wdk);
-  const swap = await getVeloraSwap(wdk);
   const pricing = getPricingClient();
 
   try {
@@ -299,12 +336,22 @@ async function executeClose(
           action: 'CLOSE',
           steps,
           gasUsed: totalGas,
-          error: `Cannot safely withdraw in round ${round + 1}. Position may need manual intervention.`,
+          error: `Cannot safely withdraw in round ${round + 1}. Position partially unwound (${round} rounds completed). Needs retry next cycle.`,
+          partialClose: true,
         };
       }
 
       // Withdraw WETH — compute amount from collateral if no debt, otherwise use maxSafe
       const ethPriceBase = BigInt(Math.floor(ethPrice * 1e8));
+      if (ethPriceBase === 0n) {
+        return {
+          success: false,
+          action: 'CLOSE',
+          steps,
+          gasUsed: totalGas,
+          error: 'ETH price is 0 — cannot compute withdrawal amount safely',
+        };
+      }
       const withdrawAmount = maxSafe === null
         ? accountData.totalCollateralBase * 10n ** 18n / ethPriceBase
         : maxSafe;
@@ -321,25 +368,21 @@ async function executeClose(
       });
       totalGas += withdrawResult.fee;
 
-      // Swap WETH → USDT0
-      const swapResult: WdkSwapResult = await swap.swap({
-        tokenIn: WETH,
-        tokenOut: USDT0,
-        tokenInAmount: withdrawAmount,
-      });
+      // Swap WETH → USDT0 with slippage protection (5% tolerance)
+      const minUsdtOut = withdrawAmount * BigInt(Math.floor(ethPrice * 0.95 * 1e6)) / 10n ** 18n;
+      const swapResult = await swapWithFallback(wdk, WETH, USDT0, withdrawAmount, minUsdtOut);
       steps.push({
         operation: 'swap',
         hash: swapResult.hash,
-        amount: swapResult.tokenOutAmount.toString(),
+        amount: swapResult.amountOut.toString(),
         success: true,
       });
-      totalGas += swapResult.fee;
 
       // Repay debt
       const freshData = await lending.getAccountData();
       const currentDebtUsdt = freshData.totalDebtBase / 100n;
-      const repayAmount = swapResult.tokenOutAmount < currentDebtUsdt
-        ? swapResult.tokenOutAmount
+      const repayAmount = swapResult.amountOut < currentDebtUsdt
+        ? swapResult.amountOut
         : currentDebtUsdt;
 
       await approveForPool(wdk, USDT0, repayAmount);
@@ -356,31 +399,39 @@ async function executeClose(
       totalGas += repayResult.fee;
     }
 
-    // Final: withdraw ALL remaining collateral (debt should be 0 now)
+    // Check if debt was fully repaid after the close loop
     const finalData = await lending.getAccountData();
-    if (finalData.totalCollateralBase > 0n && finalData.totalDebtBase === 0n) {
-      // Compute actual collateral in WETH instead of using maxUint256
-      const finalPrice = await pricing.getCurrentPrice('ETH', 'USD');
-      const finalPriceBase = BigInt(Math.floor(finalPrice * 1e8));
-      const remainingWeth = finalPriceBase > 0n
-        ? finalData.totalCollateralBase * 10n ** 18n / finalPriceBase
-        : config.agent.initialCollateralWei;
+
+    if (finalData.totalDebtBase > 0n) {
+      // Debt remains after MAX_CLOSE_ROUNDS — do NOT claim success
+      return {
+        success: false,
+        action: 'CLOSE',
+        steps,
+        gasUsed: totalGas,
+        error: `Debt still outstanding after ${MAX_CLOSE_ROUNDS} unwind rounds. Will retry next cycle.`,
+        partialClose: true,
+      };
+    }
+
+    // Final: withdraw ALL remaining collateral (debt is 0)
+    if (finalData.totalCollateralBase > 0n) {
+      const UINT256_MAX = 2n ** 256n - 1n;
 
       const finalWithdraw: WdkLendingResult = await lending.withdraw({
         token: WETH,
-        amount: remainingWeth,
+        amount: UINT256_MAX,
       });
       steps.push({
         operation: 'withdraw',
         hash: finalWithdraw.hash,
-        amount: remainingWeth.toString(),
+        amount: UINT256_MAX.toString(),
         success: true,
       });
       totalGas += finalWithdraw.fee;
     }
 
     // Profit Disbursement — PRD Flow 5
-    // Use fresh on-chain data, not pre-close position state
     const disbursement = await handleProfitDisbursement(wdk, position, steps);
 
     return {
@@ -410,16 +461,14 @@ async function handleProfitDisbursement(
   wdk: WDK,
   position: PositionState,
   steps: StepResult[]
-): Promise<{ amountWeth: string; txHash: string; treasuryAddress: string } | null> {
+): Promise<{ amountWeth: string; txHash: string; treasuryAddress: string; realizedPnlUsd: number } | null> {
   if (!position.isOpen) return null;
 
   const pricing = getPricingClient();
   const currentPrice = await pricing.getCurrentPrice('ETH', 'USD');
 
-  // Calculate realized P&L using entry price and initial collateral
-  // Position is already closed — debt is 0, remaining WETH is profit + principal
-  const initialEth = Number(position.collateralWeth) / 1e18;
-  const realizedPnlUsd = (currentPrice - position.entryPrice) * initialEth;
+  // Use pre-close unrealized P&L — post-unwind Aave balances are ~0 and useless
+  const realizedPnlUsd = position.unrealizedPnlUsd;
 
   if (realizedPnlUsd <= 0) {
     console.log(`  Position closed at loss ($${realizedPnlUsd.toFixed(2)}). No disbursement.`);
@@ -454,6 +503,7 @@ async function handleProfitDisbursement(
       amountWeth: disbursementWeth.toString(),
       txHash: txResult.hash,
       treasuryAddress: config.agent.treasuryAddress,
+      realizedPnlUsd,
     };
   } catch (error) {
     logError(error, 'profitDisbursement');

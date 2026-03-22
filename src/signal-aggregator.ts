@@ -7,12 +7,14 @@ import type {
   HealthSignal,
   SentimentSignal,
   TvlSignal,
+  VolatilitySignal,
   WdkAccountData,
 } from './types.js';
 import { config } from './config.js';
 import {
   computeSMA,
   computeRSI,
+  computeVolatility,
   detectTrend,
   healthFactorToNumber,
   rayToPercent,
@@ -53,7 +55,10 @@ export async function fetchAllSignals(wdk: WDK): Promise<MarketSignals> {
   const sentiment = resolveSignal(sentimentResult, lastSignals?.sentiment, buildDefaultSentiment);
   const tvl = resolveSignal(tvlResult, lastSignals?.tvl, buildDefaultTvl);
 
-  const signals: MarketSignals = { price, aave: rates, health, sentiment, tvl };
+  // Compute volatility from price history (no fetch needed — derived from existing data)
+  const volatility: VolatilitySignal = computeVolatility(priceHistory);
+
+  const signals: MarketSignals = { price, aave: rates, health, sentiment, tvl, volatility };
   lastSignals = signals;
   return signals;
 }
@@ -127,13 +132,13 @@ async function fetchAaveRates(): Promise<AaveRatesSignal> {
   const liquidityRate = parseUint256(result, 5);
   const variableBorrowRate = parseUint256(result, 6);
 
-  const totalSupply = totalAToken + totalVariableDebt;
-  const utilization = totalSupply > 0n
-    ? Number(totalVariableDebt * 10000n / totalSupply) / 10000
+  // Utilization = totalDebt / totalAToken (aToken supply represents all deposits)
+  const utilization = totalAToken > 0n
+    ? Number(totalVariableDebt * 10000n / totalAToken) / 10000
     : 0;
 
   // Available liquidity = aToken supply minus borrowed amount
-  const availableLiquidity = totalAToken.toString();
+  const availableLiquidity = (totalAToken - totalVariableDebt).toString();
 
   return {
     supplyAPY: rayToPercent(liquidityRate),
@@ -191,6 +196,20 @@ async function fetchTvl(): Promise<TvlSignal> {
   return { aaveTVL, tvl7dChange };
 }
 
+export function getLastSignals(): MarketSignals | null {
+  if (!lastSignals) return null;
+  // Normalize volatility regime for dashboard
+  return {
+    ...lastSignals,
+    volatility: {
+      ...lastSignals.volatility,
+      regime: lastSignals.volatility.regime === 'insufficient_data'
+        ? 'unknown' as any
+        : lastSignals.volatility.regime,
+    },
+  };
+}
+
 // ─── Helpers ───
 
 function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
@@ -215,7 +234,7 @@ function buildDefaultPrice(): PriceSignal {
   return { asset: 'ETH', current: 0, history: [], sma20: null, rsi14: null, trend: 'insufficient_data' };
 }
 function buildDefaultHealth(): HealthSignal {
-  return { current: 999, liquidationThreshold: 0, ltv: 0 };
+  return { current: 0, liquidationThreshold: 0, ltv: 0 };
 }
 function buildDefaultRates(): AaveRatesSignal {
   return { supplyAPY: 0, borrowAPY: 0, utilization: 0, availableLiquidity: '0' };

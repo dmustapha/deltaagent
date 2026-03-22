@@ -6,10 +6,32 @@ import { config } from './config.js';
 
 const groq = new Groq({ apiKey: config.groqApiKey });
 
+// ─── Decision Memory (Fix #3) ───
+interface DecisionMemoryEntry {
+  cycle: number;
+  action: string;
+  confidence: number;
+  reasoning: string;
+}
+const decisionHistory: DecisionMemoryEntry[] = [];
+const MAX_DECISION_MEMORY = 3;
+
+function recordDecision(cycle: number, decision: AgentDecision): void {
+  decisionHistory.push({
+    cycle,
+    action: decision.action,
+    confidence: decision.confidence,
+    reasoning: decision.reasoning,
+  });
+  if (decisionHistory.length > MAX_DECISION_MEMORY) {
+    decisionHistory.shift();
+  }
+}
+
 // Token budget tracking (resets each process restart — tracks session, not calendar day)
 let totalTokensUsed = 0;
-const SESSION_TOKEN_LIMIT = 100_000;
-const TOKEN_WARN_THRESHOLD = 80_000;
+const SESSION_TOKEN_LIMIT = 500_000;
+const TOKEN_WARN_THRESHOLD = 400_000;
 
 // System prompt — ~340 tokens, tuned from PRD Appendix A
 const SYSTEM_PROMPT = `You are DeltaAgent, an autonomous DeFi agent managing a leveraged ETH long position on Aave V3 via Arbitrum. You receive real-time market signals and must decide the optimal action.
@@ -35,7 +57,10 @@ ACTIONS:
 - CLOSE: Position exists, high risk or take-profit. Full unwind.
 - HOLD: No action needed. Always explain why.
 
-When signals are null or insufficient_data, weigh available signals more heavily. Never refuse to decide.`;
+When signals are null or insufficient_data, weigh available signals more heavily. Never refuse to decide.
+
+PREVIOUS DECISIONS:
+You may receive your last 1-3 decisions. Use them for consistency — avoid flip-flopping between INCREASE and DECREASE without new evidence. If you deviate from your previous action, explain why conditions changed.`;
 
 // Tool definition for structured output via tool_choice
 const DECISION_TOOL = {
@@ -75,16 +100,65 @@ const DECISION_TOOL = {
 };
 
 /**
+ * Call Groq API with one retry on transient failure.
+ * Extracted to avoid duplicating the API call + token tracking logic.
+ */
+const MODELS = ['llama-3.3-70b-versatile'] as const;
+
+async function callGroqWithRetry(userMessage: string): Promise<AgentDecision> {
+  const makeCall = async (model: string) => {
+    const completion = await groq.chat.completions.create({
+      model,
+      messages: [
+        { role: 'system', content: SYSTEM_PROMPT },
+        { role: 'user', content: userMessage },
+      ],
+      tools: [DECISION_TOOL],
+      tool_choice: { type: 'function', function: { name: 'execute_leverage_decision' } },
+      temperature: 0.3,
+      max_completion_tokens: 256,
+    });
+
+    const usage = completion.usage;
+    if (usage) {
+      totalTokensUsed += (usage.prompt_tokens ?? 0) + (usage.completion_tokens ?? 0);
+      if (totalTokensUsed > TOKEN_WARN_THRESHOLD) {
+        console.warn(`[AI Brain] Token usage warning: ${totalTokensUsed}/${SESSION_TOKEN_LIMIT}`);
+      }
+    }
+
+    const toolCall = completion.choices[0]?.message?.tool_calls?.[0];
+    if (!toolCall || toolCall.function.name !== 'execute_leverage_decision') {
+      return holdDecision('LLM did not return expected tool call');
+    }
+
+    return validateDecision(JSON.parse(toolCall.function.arguments));
+  };
+
+  for (const model of MODELS) {
+    try {
+      return await makeCall(model);
+    } catch (error) {
+      console.warn(`[AI Brain] ${model} failed:`, (error as Error).message?.slice(0, 100));
+    }
+  }
+  throw new Error('All models exhausted');
+}
+
+/**
  * Analyze market signals and return a structured trading decision.
  * Uses Groq tool_choice for schema-enforced structured output.
  */
 export async function analyze(
   signals: MarketSignals,
-  position: PositionState
+  position: PositionState,
+  cycleNumber: number = 0
 ): Promise<AgentDecision> {
   // Mock mode — return predetermined responses to save Groq tokens
   if (config.useMockLlm) {
-    return getMockDecision(signals, position);
+    const decision = getMockDecision(signals, position);
+    recordDecision(cycleNumber, decision);
+    return decision;
   }
 
   // Token budget check
@@ -97,66 +171,11 @@ export async function analyze(
   const userMessage = buildSignalPayload(signals, position);
 
   try {
-    const completion = await groq.chat.completions.create({
-      model: 'llama-3.3-70b-versatile',
-      messages: [
-        { role: 'system', content: SYSTEM_PROMPT },
-        { role: 'user', content: userMessage },
-      ],
-      tools: [DECISION_TOOL],
-      tool_choice: { type: 'function', function: { name: 'execute_leverage_decision' } },
-      temperature: 0.3,
-      max_completion_tokens: 256,
-    });
-
-    // Track token usage
-    const usage = completion.usage;
-    if (usage) {
-      totalTokensUsed += (usage.prompt_tokens ?? 0) + (usage.completion_tokens ?? 0);
-      if (totalTokensUsed > TOKEN_WARN_THRESHOLD) {
-        console.warn(`[AI Brain] Token usage warning: ${totalTokensUsed}/${SESSION_TOKEN_LIMIT}`);
-      }
-    }
-
-    // Parse tool call response
-    const toolCall = completion.choices[0]?.message?.tool_calls?.[0];
-    if (!toolCall || toolCall.function.name !== 'execute_leverage_decision') {
-      return holdDecision('LLM did not return expected tool call');
-    }
-
-    const args = JSON.parse(toolCall.function.arguments) as AgentDecision;
-    return validateDecision(args);
-  } catch (error) {
-    // Retry once on transient failure
-    if (isRetryableError(error)) {
-      try {
-        await new Promise((resolve) => setTimeout(resolve, 2000));
-        const retry = await groq.chat.completions.create({
-          model: 'llama-3.3-70b-versatile',
-          messages: [
-            { role: 'system', content: SYSTEM_PROMPT },
-            { role: 'user', content: userMessage },
-          ],
-          tools: [DECISION_TOOL],
-          tool_choice: { type: 'function', function: { name: 'execute_leverage_decision' } },
-          temperature: 0.3,
-          max_completion_tokens: 256,
-        });
-
-        const usage = retry.usage;
-        if (usage) {
-          totalTokensUsed += (usage.prompt_tokens ?? 0) + (usage.completion_tokens ?? 0);
-        }
-
-        const toolCall = retry.choices[0]?.message?.tool_calls?.[0];
-        if (toolCall) {
-          return validateDecision(JSON.parse(toolCall.function.arguments));
-        }
-      } catch {
-        // Fall through to default HOLD
-      }
-    }
-
+    const decision = await callGroqWithRetry(userMessage);
+    recordDecision(cycleNumber, decision);
+    return decision;
+  } catch (err) {
+    console.error('[AI Brain] LLM call failed:', err);
     return holdDecision('LLM unavailable');
   }
 }
@@ -200,7 +219,12 @@ function buildSignalPayload(signals: MarketSignals, position: PositionState): st
         supplyAPY: signals.aave.supplyAPY.toFixed(2) + '%',
         borrowAPY: signals.aave.borrowAPY.toFixed(2) + '%',
       },
+      volatility: {
+        current: signals.volatility.current !== null ? signals.volatility.current.toFixed(2) + '%' : null,
+        regime: signals.volatility.regime,
+      },
     },
+    previousDecisions: decisionHistory.length > 0 ? decisionHistory : undefined,
   });
 }
 
@@ -214,24 +238,22 @@ function validateDecision(raw: AgentDecision): AgentDecision {
     ? raw.reasoning.slice(0, 150)
     : 'No reasoning provided';
 
+  // Clamp targetLeverage to [1.0, maxLeverage] — LLM can hallucinate any value
+  const rawLeverage = raw.parameters?.targetLeverage;
+  const clampedLeverage = typeof rawLeverage === 'number'
+    ? Math.max(1.0, Math.min(rawLeverage, config.agent.maxLeverage))
+    : undefined;
+
   return {
     action,
     reasoning,
     confidence,
-    parameters: raw.parameters,
+    parameters: clampedLeverage !== undefined ? { targetLeverage: clampedLeverage } : raw.parameters,
   };
 }
 
 function holdDecision(reason: string): AgentDecision {
   return { action: 'HOLD', reasoning: reason, confidence: 0 };
-}
-
-function isRetryableError(error: unknown): boolean {
-  if (error instanceof Error) {
-    const msg = error.message.toLowerCase();
-    return msg.includes('rate limit') || msg.includes('429') || msg.includes('500') || msg.includes('timeout');
-  }
-  return false;
 }
 
 // ─── Mock Mode (Development) ───

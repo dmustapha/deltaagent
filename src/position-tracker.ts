@@ -30,9 +30,9 @@ export function setEntryPrice(price: number): void {
 }
 
 /**
- * Mark position as closed and reset P&L.
+ * Mark position as closed, accumulate realized P&L, and reset unrealized P&L.
  */
-export function closePosition(): void {
+export function closePosition(realizedPnlUsd: number = 0): void {
   currentPosition = {
     ...currentPosition,
     isOpen: false,
@@ -43,6 +43,8 @@ export function closePosition(): void {
     netPositionEth: 0,
     unrealizedPnlUsd: 0,
     unrealizedPnlPct: 0,
+    realizedPnlUsd: currentPosition.realizedPnlUsd + realizedPnlUsd,
+    realizedPnlCount: currentPosition.realizedPnlCount + 1,
   };
 }
 
@@ -81,7 +83,7 @@ export async function updatePosition(wdk: WDK): Promise<PositionState> {
   // P&L calculations (from PRD Appendix B)
   const netPositionEth = Number(collateralWeth) / 1e18 - (Number(debtUsdt) / 1e6 / currentPrice);
   const entryPrice = currentPosition.entryPrice || currentPrice;
-  const initialCollateralEth = Number(config.agent.initialCollateralWei) / 1e18;
+  const initialCollateralEth = Number(config.agent.initialCollateralWei / 10n ** 18n);
   const unrealizedPnlUsd = isOpen ? (currentPrice - entryPrice) * netPositionEth : 0;
   const unrealizedPnlPct = isOpen && entryPrice > 0 && initialCollateralEth > 0
     ? (unrealizedPnlUsd / (entryPrice * initialCollateralEth)) * 100
@@ -98,12 +100,21 @@ export async function updatePosition(wdk: WDK): Promise<PositionState> {
     netPositionEth: isOpen ? netPositionEth : 0,
     unrealizedPnlUsd,
     unrealizedPnlPct,
-    cycleCount: currentPosition.cycleCount + 1,
+    cycleCount: currentPosition.cycleCount,
     actionCount: currentPosition.actionCount,
     totalGasUsed: currentPosition.totalGasUsed,
+    realizedPnlUsd: currentPosition.realizedPnlUsd,
+    realizedPnlCount: currentPosition.realizedPnlCount,
   };
 
   return { ...currentPosition };
+}
+
+/**
+ * Increment cycle count once per agent cycle (called from agent-loop, not updatePosition).
+ */
+export function incrementCycleCount(): void {
+  currentPosition = { ...currentPosition, cycleCount: currentPosition.cycleCount + 1 };
 }
 
 /**
@@ -132,5 +143,7 @@ function buildEmptyPosition(): PositionState {
     cycleCount: 0,
     actionCount: 0,
     totalGasUsed: 0n,
+    realizedPnlUsd: 0,
+    realizedPnlCount: 0,
   };
 }

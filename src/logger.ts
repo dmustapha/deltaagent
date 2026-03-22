@@ -38,11 +38,28 @@ export function logSignals(signals: MarketSignals): void {
   if (signals.price.rsi14 !== null) {
     console.log(`  ${WHITE}RSI14:${RESET}          ${signals.price.rsi14.toFixed(1)}`);
   }
-  console.log(`  ${WHITE}Health Factor:${RESET}  ${signals.health.current === 999 ? 'N/A (no position)' : signals.health.current.toFixed(2)}`);
+  // Health factor with colored zones
+  const hf = signals.health.current;
+  let hfDisplay: string;
+  if (hf === 999) {
+    hfDisplay = `${DIM}N/A (no position)${RESET}`;
+  } else if (hf < 1.3) {
+    hfDisplay = `${RED}${BOLD}${hf.toFixed(2)} ⚠ DANGER${RESET}`;
+  } else if (hf < 1.5) {
+    hfDisplay = `${YELLOW}${hf.toFixed(2)} ⚠ WARNING${RESET}`;
+  } else if (hf < 2.0) {
+    hfDisplay = `${WHITE}${hf.toFixed(2)}${RESET}`;
+  } else {
+    hfDisplay = `${GREEN}${hf.toFixed(2)} ✓ SAFE${RESET}`;
+  }
+  console.log(`  ${WHITE}Health Factor:${RESET}  ${hfDisplay}`);
   console.log(`  ${WHITE}Fear & Greed:${RESET}   ${signals.sentiment.fearGreedIndex} (${signals.sentiment.label})`);
   console.log(`  ${WHITE}Aave TVL:${RESET}       $${(signals.tvl.aaveTVL / 1e9).toFixed(2)}B`);
   console.log(`  ${WHITE}Supply APY:${RESET}     ${signals.aave.supplyAPY.toFixed(2)}%`);
   console.log(`  ${WHITE}Borrow APY:${RESET}     ${signals.aave.borrowAPY.toFixed(2)}%`);
+  const volColor = signals.volatility.regime === 'high' ? RED : signals.volatility.regime === 'medium' ? YELLOW : GREEN;
+  const volValue = signals.volatility.current !== null ? signals.volatility.current.toFixed(2) + '%' : 'N/A';
+  console.log(`  ${WHITE}Volatility:${RESET}     ${volColor}${volValue} (${signals.volatility.regime})${RESET}`);
 }
 
 export function logDecision(decision: AgentDecision, safetyOverride: boolean): void {
@@ -120,10 +137,25 @@ export function logCycleSeparator(cycleNumber: number): void {
 }
 
 export function logShutdown(position: PositionState): void {
-  console.log(`\n${BOLD}${CYAN}╔══════════════════════════════════════════╗${RESET}`);
-  console.log(`${BOLD}${CYAN}║          SESSION COMPLETE                 ║${RESET}`);
-  console.log(`${BOLD}${CYAN}╚══════════════════════════════════════════╝${RESET}`);
-  console.log(`${WHITE}Total Cycles:${RESET}  ${position.cycleCount}`);
-  console.log(`${WHITE}Total Actions:${RESET} ${position.actionCount}`);
-  console.log(`${WHITE}Position:${RESET}      ${position.isOpen ? 'OPEN' : 'CLOSED'}\n`);
+  const pnlColor = position.realizedPnlUsd >= 0 ? GREEN : RED;
+  const pnlSign = position.realizedPnlUsd >= 0 ? '+' : '';
+  const gasEth = (Number(position.totalGasUsed) / 1e18).toFixed(6);
+
+  console.log(`\n${BOLD}${CYAN}╔══════════════════════════════════════════════╗${RESET}`);
+  console.log(`${BOLD}${CYAN}║           SESSION SUMMARY                     ║${RESET}`);
+  console.log(`${BOLD}${CYAN}╠══════════════════════════════════════════════╣${RESET}`);
+  console.log(`${BOLD}${CYAN}║${RESET}  ${WHITE}Cycles:${RESET}           ${String(position.cycleCount).padStart(20)}  ${CYAN}║${RESET}`);
+  console.log(`${BOLD}${CYAN}║${RESET}  ${WHITE}Actions Taken:${RESET}    ${String(position.actionCount).padStart(20)}  ${CYAN}║${RESET}`);
+  console.log(`${BOLD}${CYAN}║${RESET}  ${WHITE}Position:${RESET}         ${(position.isOpen ? 'OPEN' : 'CLOSED').padStart(20)}  ${CYAN}║${RESET}`);
+  console.log(`${BOLD}${CYAN}║${RESET}  ${WHITE}Realized P&L:${RESET}     ${pnlColor}${(pnlSign + '$' + position.realizedPnlUsd.toFixed(2)).padStart(20)}${RESET}  ${CYAN}║${RESET}`);
+  console.log(`${BOLD}${CYAN}║${RESET}  ${WHITE}Closed Positions:${RESET} ${String(position.realizedPnlCount).padStart(20)}  ${CYAN}║${RESET}`);
+  console.log(`${BOLD}${CYAN}║${RESET}  ${WHITE}Gas Used:${RESET}         ${(gasEth + ' ETH').padStart(20)}  ${CYAN}║${RESET}`);
+  if (position.isOpen) {
+    const uPnlColor = position.unrealizedPnlUsd >= 0 ? GREEN : RED;
+    const uPnlSign = position.unrealizedPnlUsd >= 0 ? '+' : '';
+    console.log(`${BOLD}${CYAN}║${RESET}  ${WHITE}Unrealized P&L:${RESET}   ${uPnlColor}${(uPnlSign + '$' + position.unrealizedPnlUsd.toFixed(2)).padStart(20)}${RESET}  ${CYAN}║${RESET}`);
+    console.log(`${BOLD}${CYAN}║${RESET}  ${WHITE}Leverage:${RESET}         ${(position.leverageRatio.toFixed(2) + 'x').padStart(20)}  ${CYAN}║${RESET}`);
+    console.log(`${BOLD}${CYAN}║${RESET}  ${WHITE}Health Factor:${RESET}    ${position.healthFactor.toFixed(2).padStart(20)}  ${CYAN}║${RESET}`);
+  }
+  console.log(`${BOLD}${CYAN}╚══════════════════════════════════════════════╝${RESET}\n`);
 }
