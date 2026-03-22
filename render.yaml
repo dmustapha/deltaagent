@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: deltaagent
+    runtime: node
+    buildCommand: cd dashboard && npm i && npm run build && cd .. && npm i
+    startCommand: npx tsx src/index.ts
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
+      - key: USE_MOCK_LLM
+        value: "true"
+      - key: MAX_CYCLES
+        value: "10000"
+      - key: CYCLE_INTERVAL_MS
+        value: "30000"
+      - key: GROQ_API_KEY
+        sync: false
+      - key: SEED_PHRASE
+        sync: false
+      - key: RPC_URL
+        sync: false
