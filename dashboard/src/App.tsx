@@ -2,11 +2,19 @@ import { useState, useEffect, useCallback } from 'react';
 import { useAgentState } from './hooks/useAgentState';
 import { LandingPage } from './views/LandingPage';
 import { Dashboard } from './views/Dashboard';
+import { DemoPage } from './views/DemoPage';
 
-type AppView = 'landing' | 'loading' | 'dashboard';
+type AppView = 'landing' | 'loading' | 'dashboard' | 'demo';
+
+function getInitialView(): AppView {
+  if (window.location.pathname === '/demo' || window.location.hash === '#demo') {
+    return 'demo';
+  }
+  return 'landing';
+}
 
 function App() {
-  const [view, setView] = useState<AppView>('landing');
+  const [view, setView] = useState<AppView>(getInitialView);
   const [loadingFading, setLoadingFading] = useState(false);
   const agentState = useAgentState();
 
@@ -73,6 +81,8 @@ function App() {
           onBack={handleBack}
         />
       )}
+
+      {view === 'demo' && <DemoPage />}
     </>
   );
 }

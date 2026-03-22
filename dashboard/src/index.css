@@ -1568,3 +1568,195 @@ input[type="range"]:focus-visible::-webkit-slider-thumb {
   background: linear-gradient(90deg, transparent, oklch(0.82 0.14 80 / 0.18), transparent);
   margin: 8px 0;
 }
+
+/* ── Demo Page ── */
+.demo-page {
+  min-height: 100vh;
+  background: var(--bg-landing);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  position: relative;
+  overflow-x: hidden;
+}
+
+.demo-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 40px;
+  position: relative;
+  z-index: 2;
+}
+
+.demo-back-link {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-secondary);
+  text-decoration: none;
+  font-size: 14px;
+  transition: color 0.2s ease;
+}
+.demo-back-link:hover { color: var(--text-primary); }
+
+.demo-brand {
+  font-family: var(--font-serif);
+  font-size: 24px;
+  background: linear-gradient(135deg, oklch(0.82 0.16 80), oklch(0.72 0.14 60));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.demo-main {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 40px 24px 80px;
+  position: relative;
+  z-index: 2;
+}
+
+.demo-video-wrap {
+  position: relative;
+  padding-bottom: 56.25%;
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--bg-surface);
+  border: 1px solid oklch(1 0 0 / 0.06);
+  box-shadow: 0 0 60px oklch(0.72 0.14 175 / 0.08);
+}
+
+.demo-video-iframe {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  border: none;
+}
+
+.demo-placeholder {
+  aspect-ratio: 16/9;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  background: var(--bg-surface);
+  border-radius: 12px;
+  border: 1px solid oklch(1 0 0 / 0.06);
+  box-shadow: 0 0 60px oklch(0.72 0.14 175 / 0.08);
+  color: var(--text-muted);
+}
+
+.demo-placeholder-icon {
+  animation: pulse-slow 3s ease-in-out infinite;
+}
+@keyframes pulse-slow {
+  0%, 100% { opacity: 0.6; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.05); }
+}
+
+.demo-placeholder-title {
+  font-family: var(--font-serif);
+  font-size: 28px;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.demo-placeholder-sub {
+  font-size: 15px;
+  color: var(--text-secondary);
+  margin: 0;
+}
+
+.demo-info {
+  margin-top: 48px;
+}
+
+.demo-info-title {
+  font-family: var(--font-serif);
+  font-size: 22px;
+  margin: 0 0 12px;
+  background: linear-gradient(135deg, oklch(0.82 0.16 80), oklch(0.72 0.14 175));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.demo-info-text {
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--text-secondary);
+  margin: 0 0 32px;
+  max-width: 680px;
+}
+
+.demo-features-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
+  margin-bottom: 36px;
+}
+
+.demo-feature-card {
+  background: var(--bg-surface);
+  border: 1px solid oklch(1 0 0 / 0.06);
+  border-radius: 8px;
+  padding: 20px;
+  transition: border-color 0.2s ease;
+}
+.demo-feature-card:hover {
+  border-color: oklch(0.72 0.14 175 / 0.3);
+}
+
+.demo-feature-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: oklch(0.72 0.14 175);
+  margin-bottom: 6px;
+}
+
+.demo-feature-desc {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
+.demo-links {
+  display: flex;
+  gap: 12px;
+}
+
+.demo-link-btn {
+  display: inline-flex;
+  align-items: center;
+  padding: 10px 24px;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  text-decoration: none;
+  transition: all 0.2s ease;
+  background: linear-gradient(135deg, oklch(0.72 0.14 175), oklch(0.60 0.12 175));
+  color: oklch(0.10 0 0);
+}
+.demo-link-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 20px oklch(0.72 0.14 175 / 0.3);
+}
+
+.demo-link-btn--secondary {
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  border: 1px solid oklch(1 0 0 / 0.1);
+}
+.demo-link-btn--secondary:hover {
+  box-shadow: 0 4px 20px oklch(0 0 0 / 0.2);
+}
+
+@media (max-width: 640px) {
+  .demo-header { padding: 16px 20px; }
+  .demo-main { padding: 24px 16px 60px; }
+  .demo-features-grid { grid-template-columns: 1fr; }
+  .demo-placeholder-title { font-size: 22px; }
+}
