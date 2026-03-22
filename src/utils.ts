@@ -44,6 +44,31 @@ export function computeRSI(prices: number[], period: number): number | null {
 }
 
 /**
+ * Rolling standard deviation of percentage returns.
+ * Returns null if fewer than 2 price points available.
+ * Regime: low < 2%, medium 2-5%, high > 5%.
+ */
+export function computeVolatility(prices: number[]): { current: number | null; regime: 'low' | 'medium' | 'high' | 'insufficient_data' } {
+  if (prices.length < 2) return { current: null, regime: 'insufficient_data' };
+
+  // Compute percentage returns
+  const returns: number[] = [];
+  for (let i = 1; i < prices.length; i++) {
+    if (prices[i - 1] !== 0) {
+      returns.push((prices[i] - prices[i - 1]) / prices[i - 1]);
+    }
+  }
+
+  // Standard deviation of returns
+  const mean = returns.reduce((s, r) => s + r, 0) / returns.length;
+  const variance = returns.reduce((s, r) => s + (r - mean) ** 2, 0) / returns.length;
+  const stddev = Math.sqrt(variance) * 100; // as percentage
+
+  const regime = stddev < 2 ? 'low' : stddev < 5 ? 'medium' : 'high';
+  return { current: stddev, regime };
+}
+
+/**
  * Detect price trend from SMA20 comparison.
  */
 export function detectTrend(
@@ -106,7 +131,7 @@ export async function ethCall(
       jsonrpc: '2.0',
       method: 'eth_call',
       params: [{ to, data }, 'latest'],
-      id: 1,
+      id: Math.floor(Math.random() * 1e9),
     }),
   });
   const json = (await response.json()) as { result?: string; error?: { message: string } };
@@ -163,6 +188,11 @@ export function calcMaxSafeWithdraw(
   if (totalDebtBase === 0n) {
     // No debt — caller should withdraw total collateral
     return null;
+  }
+  // Guard: liquidationThreshold must be in basis points (0-10000)
+  if (liquidationThreshold <= 0n || liquidationThreshold > 10000n) {
+    console.warn(`[Utils] liquidationThreshold out of expected range: ${liquidationThreshold}. Returning 0 for safety.`);
+    return 0n;
   }
   // Minimum collateral to stay above liquidation (base currency, 8 decimals)
   // liquidationThreshold is in basis points (e.g. 8250 = 82.5%)

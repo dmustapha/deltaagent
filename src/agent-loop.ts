@@ -12,6 +12,7 @@ import {
   setEntryPrice,
   closePosition,
   incrementActions,
+  incrementCycleCount,
 } from './position-tracker.js';
 import {
   logCycleSeparator,
@@ -23,9 +24,18 @@ import {
   logShutdown,
 } from './logger.js';
 import type WDK from '@tetherto/wdk';
+import { recordTransaction } from './state-collector.js';
 
 let running = false;
+let paused = false;
+let isProcessing = false;
 let cycleCount = 0;
+
+// Circuit breaker (Fix #7): pause execution after repeated failures
+const MAX_CONSECUTIVE_FAILURES = 3;
+const COOLDOWN_CYCLES = 5;
+let consecutiveFailures = 0;
+let cooldownRemaining = 0;
 
 /**
  * Start the agent loop. Runs until stop() is called or maxCycles reached.
@@ -35,6 +45,10 @@ export async function start(wdk: WDK): Promise<void> {
   cycleCount = 0;
 
   while (running && cycleCount < config.agent.maxCycles) {
+    if (paused) {
+      await new Promise((resolve) => setTimeout(resolve, config.agent.cycleIntervalMs));
+      continue;
+    }
     const startTime = Date.now();
     await runCycle(wdk);
     const elapsed = Date.now() - startTime;
@@ -65,6 +79,9 @@ async function runCycle(wdk: WDK): Promise<void> {
   logCycleSeparator(cycleCount);
 
   try {
+    // Track cycle count in position state (once per cycle, not per updatePosition call)
+    incrementCycleCount();
+
     // 1. Update position from live Aave data FIRST (stale data = stale safety override)
     const position = await updatePosition(wdk);
 
@@ -72,11 +89,11 @@ async function runCycle(wdk: WDK): Promise<void> {
     const signals = await fetchAllSignals(wdk);
     logSignals(signals);
 
-    // 3. Safety override: health factor < 1.3 → force CLOSE, bypass LLM
+    // 3. Safety override: health factor < min → force CLOSE, bypass LLM (only if emergencyExit enabled)
     let decision: AgentDecision;
     let safetyOverride = false;
 
-    if (position.isOpen && position.healthFactor < config.agent.minHealthFactor) {
+    if (config.agent.emergencyExit && position.isOpen && position.healthFactor < config.agent.minHealthFactor) {
       decision = {
         action: 'CLOSE',
         reasoning: `Health factor ${position.healthFactor.toFixed(2)} below safety threshold ${config.agent.minHealthFactor}`,
@@ -85,14 +102,27 @@ async function runCycle(wdk: WDK): Promise<void> {
       safetyOverride = true;
     } else {
       // 4. AI Brain analysis
-      decision = await analyze(signals, position);
+      isProcessing = true;
+      try {
+        decision = await analyze(signals, position, cycleCount);
+      } finally {
+        isProcessing = false;
+      }
+    }
+
+    // 4a. Volatility gate: skip new positions if volatility exceeds limit
+    if (decision.action === 'OPEN_POSITION' && signals.volatility.current !== null && signals.volatility.current > config.agent.volatilityLimit) {
+      decision = { ...decision, action: 'HOLD', reasoning: `Volatility ${signals.volatility.current.toFixed(2)} exceeds limit ${config.agent.volatilityLimit}` };
     }
 
     logDecision(decision, safetyOverride);
 
-    // 5. Execute if confidence meets threshold and action is not HOLD
+    // 5. Circuit breaker: skip execution during cooldown
     let executionResult = null;
-    if (decision.action !== 'HOLD' && decision.confidence >= config.agent.minConfidence) {
+    if (cooldownRemaining > 0) {
+      cooldownRemaining--;
+      console.warn(`[Agent] Circuit breaker active — ${cooldownRemaining} cooldown cycles remaining. Skipping execution.`);
+    } else if (decision.action !== 'HOLD' && decision.confidence >= config.agent.minConfidence) {
       // Validate: don't OPEN if already open, don't CLOSE if not open
       if (decision.action === 'OPEN_POSITION' && position.isOpen) {
         decision = { ...decision, action: 'HOLD', reasoning: 'Position already open, treating as HOLD' };
@@ -107,14 +137,45 @@ async function runCycle(wdk: WDK): Promise<void> {
         executionResult = await execute(wdk, decision, position);
         logExecution(executionResult);
 
+        // Record transaction for dashboard
+        if (executionResult.steps.length > 0) {
+          for (const step of executionResult.steps) {
+            recordTransaction({
+              cycle: cycleCount,
+              action: `${decision.action}:${step.operation}`,
+              details: `${step.operation} ${step.amount}`,
+              txHash: step.hash,
+              status: step.success ? 'success' : 'failed',
+              timestamp: Date.now(),
+              triggeredBy: safetyOverride ? 'safety' : 'ai',
+            });
+          }
+        }
+
         if (executionResult.success) {
+          consecutiveFailures = 0; // Reset circuit breaker on success
           incrementActions(executionResult.gasUsed);
 
           // Track position lifecycle events
-          if (decision.action === 'OPEN_POSITION' || decision.action === 'INCREASE') {
+          if (decision.action === 'OPEN_POSITION') {
             setEntryPrice(signals.price.current);
+          } else if (decision.action === 'INCREASE') {
+            // Keep original entry price on INCREASE — don't overwrite with current price
           } else if (decision.action === 'CLOSE') {
-            closePosition();
+            // Use full realized P&L, not disbursement amount (which is only 10% of profit)
+            const realizedPnl = executionResult.disbursement?.realizedPnlUsd
+              ?? position.unrealizedPnlUsd;
+            closePosition(realizedPnl);
+          }
+        } else {
+          consecutiveFailures++;
+          if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
+            cooldownRemaining = COOLDOWN_CYCLES;
+            console.warn(`[Agent] Circuit breaker TRIPPED: ${consecutiveFailures} consecutive failures. Cooling down for ${COOLDOWN_CYCLES} cycles.`);
+          }
+
+          if (executionResult.partialClose) {
+            console.warn(`[Agent] Close partially completed (${executionResult.steps.length} steps). Will retry next cycle.`);
           }
         }
       }
@@ -146,3 +207,11 @@ async function runCycle(wdk: WDK): Promise<void> {
     // Don't crash the loop — next cycle may recover
   }
 }
+
+export function getAgentStatus() {
+  return { running, paused, cycleCount, consecutiveFailures, cooldownRemaining, isProcessing };
+}
+
+export function pauseAgent(): void { paused = true; }
+export function resumeAgent(): void { paused = false; }
+export function stopAgent(): void { running = false; }

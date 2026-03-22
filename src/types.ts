@@ -11,6 +11,10 @@ export interface AgentConfig {
   profitDisbursePct: number;     // 0.10 = 10% of profit to treasury
   treasuryAddress: string;       // Address for profit disbursement
   maxCycles: number;             // Hard stop: 100 cycles per run
+  volatilityLimit: number;       // Max volatility before agent avoids new positions (default 0.6)
+  rebalanceThreshold: number;    // % deviation to trigger rebalance (default 15)
+  autoRebalance: boolean;        // Auto-adjust position on threshold breach
+  emergencyExit: boolean;        // Auto-close if HF < minimum
 }
 
 export interface AppConfig {
@@ -25,6 +29,7 @@ export interface AppConfig {
     weth: string;
     usdt0: string;
     gmxVaultWhale: string;
+    uniswapRouter: string;
   };
   agent: AgentConfig;
 }
@@ -63,12 +68,18 @@ export interface TvlSignal {
   tvl7dChange: number | null;    // null if < 2 readings
 }
 
+export interface VolatilitySignal {
+  current: number | null;   // Rolling stddev of returns (null if insufficient data)
+  regime: 'low' | 'medium' | 'high' | 'insufficient_data';
+}
+
 export interface MarketSignals {
   price: PriceSignal;
   aave: AaveRatesSignal;
   health: HealthSignal;
   sentiment: SentimentSignal;
   tvl: TvlSignal;
+  volatility: VolatilitySignal;
 }
 
 // ─── AI Decision ───
@@ -102,10 +113,12 @@ export interface ExecutionResult {
   steps: StepResult[];
   gasUsed: bigint;
   error?: string;
+  partialClose?: boolean;        // true if close loop exited mid-unwind
   disbursement?: {
     amountWeth: string;          // bigint as string
     txHash: string;
     treasuryAddress: string;
+    realizedPnlUsd: number;      // Full realized P&L (not just disbursed portion)
   };
 }
 
@@ -125,6 +138,8 @@ export interface PositionState {
   cycleCount: number;
   actionCount: number;
   totalGasUsed: bigint;
+  realizedPnlUsd: number;         // Cumulative realized P&L across all closed positions
+  realizedPnlCount: number;       // Number of closed positions
 }
 
 // ─── Cycle Result ───
