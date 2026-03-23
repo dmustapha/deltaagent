@@ -9,6 +9,8 @@ services:
         value: "20"
       - key: USE_MOCK_LLM
         value: "true"
+      - key: DEMO_MODE
+        value: "true"
       - key: MAX_CYCLES
         value: "10000"
       - key: CYCLE_INTERVAL_MS

@@ -7,9 +7,11 @@ import { fileURLToPath } from 'url';
 import { getState, bigintReplacer } from './state-collector.js';
 import { updateConfig } from './config.js';
 import { pauseAgent, resumeAgent, stopAgent } from './agent-loop.js';
+import { getDemoState } from './demo-state.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const API_TOKEN = process.env.API_TOKEN || '';
+const DEMO_MODE = process.env.DEMO_MODE === 'true';
 
 function authMiddleware(req: Request, res: Response, next: NextFunction): void {
   if (!API_TOKEN) { next(); return; }
@@ -37,7 +39,7 @@ export function startApiServer(port = 3001): void {
   // State endpoint — returns full DashboardState
   app.get('/api/state', async (_req, res) => {
     try {
-      const state = await getState();
+      const state = DEMO_MODE ? getDemoState() : await getState();
       res.setHeader('Content-Type', 'application/json');
       res.send(JSON.stringify(state, bigintReplacer));
     } catch (err) {
@@ -77,5 +79,6 @@ export function startApiServer(port = 3001): void {
     });
   });
 
+  if (DEMO_MODE) console.log('[API] DEMO_MODE active — serving simulated dashboard data');
   app.listen(port, () => console.log(`[API] Dashboard API on http://localhost:${port}`));
 }
