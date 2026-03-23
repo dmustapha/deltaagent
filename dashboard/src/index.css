@@ -196,10 +196,18 @@ body::after {
 
 /* ── PREFERS REDUCED MOTION ──────────────────────────────────── */
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after {
+  /* Disable looping decorative animations only */
+  .sunburst-outer, .sunburst-inner, .sunburst-glow,
+  .landing-glow-top,
+  body::before, body::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
+  }
+  /* Keep entrance animations but make them faster */
+  .reveal-right.revealed,
+  .reveal-left.revealed,
+  .reveal-up.revealed {
+    transition-duration: 0.3s !important;
   }
 }
 
