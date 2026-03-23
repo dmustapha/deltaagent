@@ -4,6 +4,7 @@ import Groq from 'groq-sdk';
 import type { MarketSignals, AgentDecision, PositionState, AgentAction } from './types.js';
 import { config } from './config.js';
 
+console.log(`[AI Brain] Key prefix: ${config.groqApiKey.slice(0, 12)}... (len=${config.groqApiKey.length})`);
 const groq = new Groq({ apiKey: config.groqApiKey });
 
 // ─── Decision Memory (Fix #3) ───
