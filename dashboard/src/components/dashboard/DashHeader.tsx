@@ -29,6 +29,7 @@ export function DashHeader({ state, onBack }: DashHeaderProps) {
   return (
     <header className="dash-header" role="banner">
       <div className="dash-brand" aria-label="DeltaAgent">
+        <img src="/logo.png" alt="" className="dash-brand-logo" />
         DeltaAgent
       </div>
       <div className="h-divider" aria-hidden="true" />
@@ -60,8 +61,8 @@ export function DashHeader({ state, onBack }: DashHeaderProps) {
         {state.agent.mockMode && (
           <span
             className="h-pill h-pill-mock"
-            aria-label="Demo mode — running with simulated data"
-            title="Running with simulated data — no real transactions"
+            aria-label="Demo mode: running with simulated data"
+            title="Running with simulated data, no real transactions"
           >
             DEMO MODE
           </span>

@@ -149,7 +149,7 @@ export const MOCK_STATE: DashboardState = {
     {
       cycle: 235,
       action: 'DECREASE',
-      details: 'Emergency deleverage — health < 1.3',
+      details: 'Emergency deleverage, health < 1.3',
       txHash: '0x123def456789abc123def456789abc123def456789abc123def456789abc1234',
       status: 'partial',
       timestamp: Date.now() - 210000,

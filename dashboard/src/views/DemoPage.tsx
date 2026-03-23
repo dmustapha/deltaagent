@@ -27,7 +27,10 @@ export function DemoPage() {
           </svg>
           Back to app
         </a>
-        <h1 className="demo-brand">DeltaAgent</h1>
+        <h1 className="demo-brand">
+          <img src="/logo.png" alt="" className="demo-brand-logo" />
+          DeltaAgent
+        </h1>
       </header>
 
       <main className="demo-main">
