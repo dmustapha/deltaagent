@@ -7,9 +7,9 @@ import { DemoPage } from './views/DemoPage';
 type AppView = 'landing' | 'loading' | 'dashboard' | 'demo';
 
 function getInitialView(): AppView {
-  if (window.location.pathname === '/demo' || window.location.hash === '#demo') {
-    return 'demo';
-  }
+  const hash = window.location.hash;
+  if (hash === '#demo' || window.location.pathname === '/demo') return 'demo';
+  if (hash === '#dashboard') return 'dashboard';
   return 'landing';
 }
 
@@ -17,6 +17,32 @@ function App() {
   const [view, setView] = useState<AppView>(getInitialView);
   const [loadingFading, setLoadingFading] = useState(false);
   const agentState = useAgentState();
+
+  // Sync hash to URL when view changes
+  useEffect(() => {
+    const hashMap: Record<AppView, string> = {
+      landing: '',
+      loading: '#dashboard',
+      dashboard: '#dashboard',
+      demo: '#demo',
+    };
+    const target = hashMap[view];
+    if (window.location.hash !== target) {
+      window.location.hash = target;
+    }
+  }, [view]);
+
+  // Listen for browser back/forward
+  useEffect(() => {
+    const onHashChange = () => {
+      const hash = window.location.hash;
+      if (hash === '#dashboard') setView('dashboard');
+      else if (hash === '#demo') setView('demo');
+      else setView('landing');
+    };
+    window.addEventListener('hashchange', onHashChange);
+    return () => window.removeEventListener('hashchange', onHashChange);
+  }, []);
 
   const handleLaunch = useCallback(() => {
     setView('loading');
