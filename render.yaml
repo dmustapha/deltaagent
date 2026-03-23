@@ -8,7 +8,7 @@ services:
       - key: NODE_VERSION
         value: "20"
       - key: USE_MOCK_LLM
-        value: "true"
+        value: "false"
       - key: MAX_CYCLES
         value: "10000"
       - key: CYCLE_INTERVAL_MS
