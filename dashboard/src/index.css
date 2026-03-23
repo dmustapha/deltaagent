@@ -1,16 +1,5 @@
 @import "tailwindcss";
 
-/* Disable Tailwind v4's built-in reduced-motion kill-switch */
-@layer base {
-  @media (prefers-reduced-motion: reduce) {
-    *, *::before, *::after {
-      animation-duration: revert !important;
-      animation-iteration-count: revert !important;
-      transition-duration: revert !important;
-    }
-  }
-}
-
 /* ══════════════════════════════════════════════════════════════════
    DELTAAGENT — Design System (Tailwind v4 + oklch P3)
    Source of truth: final-merged.html
