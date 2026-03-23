@@ -4,7 +4,6 @@ import Groq from 'groq-sdk';
 import type { MarketSignals, AgentDecision, PositionState, AgentAction } from './types.js';
 import { config } from './config.js';
 
-console.log(`[AI Brain] Key prefix: ${config.groqApiKey.slice(0, 12)}... (len=${config.groqApiKey.length})`);
 const groq = new Groq({ apiKey: config.groqApiKey });
 
 // ─── Decision Memory (Fix #3) ───
@@ -104,7 +103,7 @@ const DECISION_TOOL = {
  * Call Groq API with one retry on transient failure.
  * Extracted to avoid duplicating the API call + token tracking logic.
  */
-const MODELS = ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant'] as const;
+const MODELS = ['llama-3.3-70b-versatile', 'meta-llama/llama-4-scout-17b-16e-instruct', 'qwen/qwen3-32b'] as const;
 
 // Backoff: skip LLM calls for a cooldown period after rate limits
 let rateLimitCooldownUntil = 0;
