@@ -1,5 +1,16 @@
 @import "tailwindcss";
 
+/* Disable Tailwind v4's built-in reduced-motion kill-switch */
+@layer base {
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: revert !important;
+      animation-iteration-count: revert !important;
+      transition-duration: revert !important;
+    }
+  }
+}
+
 /* ══════════════════════════════════════════════════════════════════
    DELTAAGENT — Design System (Tailwind v4 + oklch P3)
    Source of truth: final-merged.html
@@ -193,46 +204,6 @@ body::after {
 .delay-4 { transition-delay: 0.4s; }
 .delay-5 { transition-delay: 0.5s; }
 .delay-6 { transition-delay: 0.6s; }
-
-/* ── PREFERS REDUCED MOTION ──────────────────────────────────── */
-/* Tailwind v4 puts its blanket reduced-motion rule in @layer base
-   with !important. In cascade layers, !important layered > !important
-   unlayered. So we must place our overrides inside @layer base too,
-   where our specific selectors beat Tailwind's * by specificity. */
-@layer base {
-  @media (prefers-reduced-motion: reduce) {
-    /* Hero entrance animations — play once, not looping */
-    .hero-eyebrow,
-    .hero-brand,
-    .hero-deco-lines,
-    .deco-line,
-    .hero-tagline,
-    .hero-subtitle,
-    .hero-cta-wrap {
-      animation-duration: 0.6s !important;
-      animation-iteration-count: 1 !important;
-    }
-    /* Scroll reveal transitions */
-    .reveal-right.revealed,
-    .reveal-left.revealed,
-    .reveal-up.revealed {
-      transition-duration: 0.3s !important;
-    }
-    /* Dashboard tab entrance */
-    .tab-enter {
-      animation-duration: 0.3s !important;
-      animation-iteration-count: 1 !important;
-    }
-    /* Suppress looping decorative animations (aurora, sunburst, CTA pulse) */
-    .sunburst-outer, .sunburst-inner, .sunburst-glow,
-    .landing-glow-top,
-    .hero-cta-ring,
-    body::before, body::after {
-      animation-duration: 0.01ms !important;
-      animation-iteration-count: 1 !important;
-    }
-  }
-}
 
 /* ── SKIP LINK ───────────────────────────────────────────────── */
 .skip-link {
