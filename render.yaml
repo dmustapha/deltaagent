@@ -12,7 +12,7 @@ services:
       - key: MAX_CYCLES
         value: "10000"
       - key: CYCLE_INTERVAL_MS
-        value: "30000"
+        value: "60000"
       - key: GROQ_API_KEY
         sync: false
       - key: SEED_PHRASE
