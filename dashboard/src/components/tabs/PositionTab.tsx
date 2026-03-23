@@ -38,7 +38,7 @@ function PositionStatusBanner({ position }: { position: DashboardState['position
   if (!position.isOpen) {
     return (
       <div className="position-status-banner banner--info reveal-up delay-1">
-        No active position — the agent is monitoring market conditions for a favorable entry.
+        No active position. The agent is monitoring market conditions for a favorable entry.
       </div>
     );
   }
@@ -47,14 +47,14 @@ function PositionStatusBanner({ position }: { position: DashboardState['position
   if (hf < 1.5) {
     return (
       <div className="position-status-banner banner--warn reveal-up delay-1">
-        Caution — health factor at {hf.toFixed(2)} is approaching the liquidation threshold.
+        Caution: health factor at {hf.toFixed(2)} is approaching the liquidation threshold.
       </div>
     );
   }
 
   return (
     <div className="position-status-banner banner--ok reveal-up delay-1">
-      Position active since entry at {formatUsd(position.entryPrice)} — health factor safe at {hf.toFixed(2)}.
+      Position active since entry at {formatUsd(position.entryPrice)}. Health factor safe at {hf.toFixed(2)}.
     </div>
   );
 }
@@ -103,7 +103,7 @@ function HealthHero({ position }: { position: DashboardState['position'] }) {
           {position.leverageRatio.toFixed(1)}x Leverage
         </span>
         <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>
-          {healthZoneLabel(hf)} — liquidation at 1.00
+          {healthZoneLabel(hf)}, liquidation at 1.00
         </span>
       </div>
       <div className="card-helper">Your safety buffer on Aave. Below 1.5 triggers caution, below 1.3 the agent force-closes to prevent liquidation at 1.0.</div>
@@ -159,7 +159,7 @@ function CollateralDebtNet({ position }: { position: DashboardState['position'] 
         <div className="progress-track" style={{ marginTop: 12 }} aria-label={`Net worth ratio ${nPct}%`}>
           <div className="progress-fill" style={{ width: `${nPct}%` }} />
         </div>
-        <div className="card-helper">What you'd receive if you closed now — collateral minus outstanding debt.</div>
+        <div className="card-helper">What you'd receive if you closed now: collateral minus outstanding debt.</div>
       </div>
     </div>
   );
@@ -264,7 +264,7 @@ export function PositionTab({ position }: PositionTabProps) {
   return (
     <div role="tabpanel" aria-labelledby="tab-position" tabIndex={0}>
       <h2 className="tab-heading reveal-up">Position Overview</h2>
-      <p className="tab-subtitle reveal-up delay-1">Live position on Aave V3 — health factor, collateral ratio, and P&L update every cycle.</p>
+      <p className="tab-subtitle reveal-up delay-1">Live position on Aave V3. Health factor, collateral ratio, and P&L update every cycle.</p>
       <PositionStatusBanner position={position} />
       {!position.isOpen ? (
         <EmptyState />

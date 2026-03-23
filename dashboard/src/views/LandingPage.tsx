@@ -53,6 +53,7 @@ function LandingNav({ onLaunch }: { onLaunch: () => void }) {
   return (
     <nav className="landing-nav" aria-label="Main navigation">
       <span className="brand" aria-label="DeltaAgent">
+        <img src="/logo.png" alt="" className="brand-logo" />
         DeltaAgent
       </span>
       <button
@@ -87,8 +88,8 @@ function HeroSection({ onLaunch }: { onLaunch: () => void }) {
         </div>
         <p className="hero-tagline">Your Autonomous Leverage Engine</p>
         <p className="hero-subtitle">
-          DeltaAgent watches ETH markets around the clock — analyzing price,
-          volatility, and on-chain signals — then manages your leveraged Aave
+          DeltaAgent watches ETH markets around the clock, analyzing price,
+          volatility, and on-chain signals, then manages your leveraged Aave
           position so you don&apos;t have to.
         </p>
         <div className="hero-cta-wrap">
@@ -111,7 +112,7 @@ function FeaturesSection() {
     {
       label: 'Signal Layer',
       title: 'Real-Time Signal Feed',
-      desc: 'Pulls live ETH price, RSI, volatility, Fear & Greed index, and Aave rates. Every metric the agent uses to decide — visible to you.',
+      desc: 'Pulls live ETH price, RSI, volatility, Fear & Greed index, and Aave rates. Every metric the agent uses to decide, visible to you.',
       reveal: 'reveal-left',
       delay: 'delay-1',
     },
@@ -125,14 +126,14 @@ function FeaturesSection() {
     {
       label: 'Execution Layer',
       title: 'On-Chain Execution',
-      desc: 'When the AI decides to act, it executes directly on Aave V3 — supplying WETH, borrowing USDT, rebalancing collateral. No manual steps.',
+      desc: 'When the AI decides to act, it executes directly on Aave V3: supplying WETH, borrowing USDT, rebalancing collateral. No manual steps.',
       reveal: 'reveal-left',
       delay: 'delay-3',
     },
     {
       label: 'Audit Layer',
       title: 'Complete Audit Trail',
-      desc: 'Every decision, every transaction, every signal — logged and visible in the dashboard. You always know what the agent did and why.',
+      desc: 'Every decision, every transaction, every signal. Logged and visible in the dashboard. You always know what the agent did and why.',
       reveal: 'reveal-right',
       delay: 'delay-4',
     },
@@ -242,7 +243,7 @@ function CtaSection({ onLaunch }: { onLaunch: () => void }) {
         Your leverage, on autopilot.
       </h2>
       <p className="cta-subtitle reveal-up delay-1">
-        Set your risk parameters. The agent handles the rest — monitoring
+        Set your risk parameters. The agent handles the rest: monitoring
         signals, making decisions, and executing on-chain. You just watch.
       </p>
       <div className="hero-cta-wrap reveal-up delay-2">
@@ -270,7 +271,10 @@ function CtaSection({ onLaunch }: { onLaunch: () => void }) {
 function LandingFooter() {
   return (
     <footer className="landing-footer">
-      <span className="footer-brand">DeltaAgent</span>
+      <span className="footer-brand">
+        <img src="/logo.png" alt="" className="footer-logo" />
+        DeltaAgent
+      </span>
       <span className="footer-inspiration">
         Bloomberg (data density) + Afrofuturism (gold warmth)
       </span>

@@ -81,7 +81,7 @@ function EthPriceCard({ signals }: { signals: NonNullable<DashboardState['signal
           >
             {rsi14 !== null ? Math.round(rsi14) : '--'}
           </div>
-          <div className="card-helper" style={{ marginTop: 2 }}>RSI measures momentum. 30–70 is neutral — above 70 the agent may reduce exposure, below 30 it watches for entry.</div>
+          <div className="card-helper" style={{ marginTop: 2 }}>RSI measures momentum. 30 to 70 is neutral. Above 70 the agent may reduce exposure, below 30 it watches for entry.</div>
         </div>
       </div>
     </div>
@@ -228,7 +228,7 @@ export function SignalsTab({ signals }: SignalsTabProps) {
   return (
     <div role="tabpanel" aria-labelledby="tab-signals" tabIndex={0}>
       <h2 className="tab-heading reveal-up">Market Signals</h2>
-      <p className="tab-subtitle reveal-up delay-1">Real-time data feeding the AI's decision engine — price, sentiment, volatility, and protocol health.</p>
+      <p className="tab-subtitle reveal-up delay-1">Real-time data feeding the AI's decision engine: price, sentiment, volatility, and protocol health.</p>
       {!signals ? (
         <NoSignalsState />
       ) : (

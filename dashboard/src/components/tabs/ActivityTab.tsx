@@ -362,7 +362,7 @@ export function ActivityTab({ currentDecision, decisionHistory, cycleNumber, tra
     <div role="tabpanel" aria-labelledby="tab-activity" tabIndex={0}>
       <h2 className="tab-heading reveal-up">Activity</h2>
       <p className="tab-subtitle reveal-up delay-1">
-        AI decisions and on-chain transactions — the full audit trail of your agent's actions.
+        AI decisions and on-chain transactions. The full audit trail of your agent's actions.
       </p>
 
       <SectionHeader

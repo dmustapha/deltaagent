@@ -242,7 +242,7 @@ export function HistoryTab({ transactions, decisionHistory }: HistoryTabProps) {
   return (
     <div role="tabpanel" aria-labelledby="tab-history" tabIndex={0}>
       <h2 className="tab-heading reveal-up">Transaction History</h2>
-      <p className="tab-subtitle reveal-up delay-1">Every on-chain action the agent executed — click a hash to verify on Arbiscan, Arbitrum's block explorer.</p>
+      <p className="tab-subtitle reveal-up delay-1">Every on-chain action the agent executed. Click a hash to verify on Arbiscan.</p>
       <TransactionTable transactions={transactions} />
       <PerformanceChart history={decisionHistory} />
     </div>

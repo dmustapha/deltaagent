@@ -256,7 +256,7 @@ export function ConfigTab({ config, agentStatus, isMockMode, updateConfig, contr
 
       {isMockMode && (
         <div className="demo-mode-banner reveal-up delay-1" role="status">
-          Demo Mode — these controls show how configuration works. Connect a live agent to save real parameters.
+          Demo Mode. These controls show how configuration works. Connect a live agent to save real parameters.
         </div>
       )}
 
@@ -331,7 +331,7 @@ export function ConfigTab({ config, agentStatus, isMockMode, updateConfig, contr
           <ToggleSwitch
             label="Auto-rebalance toggle"
             name="Auto-Rebalance"
-            description="Automatically corrects position when health factor drifts outside your threshold — no manual intervention needed."
+            description="Automatically corrects position when health factor drifts outside your threshold. No manual intervention needed."
             checked={autoRebalance}
             onChange={handleAutoRebalanceChange}
             disabled={isMockMode}
@@ -339,7 +339,7 @@ export function ConfigTab({ config, agentStatus, isMockMode, updateConfig, contr
           <ToggleSwitch
             label="Emergency exit toggle"
             name="Emergency Exit"
-            description="Immediately closes the entire position if health factor drops below your minimum — protects against liquidation."
+            description="Immediately closes the entire position if health factor drops below your minimum. Protects against liquidation."
             checked={emergencyExit}
             onChange={handleEmergencyExitChange}
             disabled={isMockMode}
@@ -361,7 +361,7 @@ export function ConfigTab({ config, agentStatus, isMockMode, updateConfig, contr
                 <h4>{name.charAt(0).toUpperCase() + name.slice(1)}</h4>
                 <p>
                   {name === 'conservative' && 'Lower leverage, wider safety margins'}
-                  {name === 'balanced' && 'Default parameters — moderate risk/reward'}
+                  {name === 'balanced' && 'Default parameters, moderate risk/reward'}
                   {name === 'aggressive' && 'Higher leverage, tighter margins'}
                 </p>
               </button>
@@ -391,7 +391,7 @@ export function ConfigTab({ config, agentStatus, isMockMode, updateConfig, contr
             disabled={saveStatus === 'saving'}
             aria-label="Save configuration"
           >
-            {saveStatus === 'saved' ? '\u2713 Saved' : saveStatus === 'saving' ? 'Saving\u2026' : saveStatus === 'error' ? 'Error — retry' : 'Save Configuration'}
+            {saveStatus === 'saved' ? '\u2713 Saved' : saveStatus === 'saving' ? 'Saving\u2026' : saveStatus === 'error' ? 'Error, retry' : 'Save Configuration'}
           </button>
         </div>
       </div>
