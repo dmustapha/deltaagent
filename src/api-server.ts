@@ -11,7 +11,7 @@ import { getDemoState } from './demo-state.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const API_TOKEN = process.env.API_TOKEN || '';
-const DEMO_MODE = process.env.DEMO_MODE === 'true';
+const DEMO_MODE = process.env.DEMO_MODE === 'true' || process.env.USE_MOCK_LLM === 'true';
 
 function authMiddleware(req: Request, res: Response, next: NextFunction): void {
   if (!API_TOKEN) { next(); return; }
