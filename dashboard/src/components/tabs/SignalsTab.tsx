@@ -27,7 +27,12 @@ function sentimentLabel(index: number): string {
   return 'Extreme Greed';
 }
 
+function isInsufficientData(trend: string): boolean {
+  return trend.toLowerCase().includes('insufficient');
+}
+
 function trendPctSign(trend: string): { text: string; colorClass: string } {
+  if (isInsufficientData(trend)) return { text: '', colorClass: '' };
   const match = trend.match(/([-+]?\d+\.?\d*)/);
   if (!match) return { text: trend, colorClass: '' };
   const val = parseFloat(match[1]);
@@ -59,11 +64,15 @@ function EthPriceCard({ signals }: { signals: NonNullable<DashboardState['signal
         <div className="signal-price-main font-mono" aria-label={formatUsd(current)}>
           {formatUsd(current)}
         </div>
-        {trendInfo.text && (
+        {trendInfo.text ? (
           <span style={{ fontSize: 14, color: trendColor }} aria-label={`Trend ${trendInfo.text}`}>
             {trendInfo.text}
           </span>
-        )}
+        ) : isInsufficientData(trend) ? (
+          <span style={{ fontSize: 12, color: 'var(--text-muted)', fontStyle: 'italic' }}>
+            Collecting trend data
+          </span>
+        ) : null}
       </div>
       <div className="signal-meta-row">
         <div className="signal-meta-item">
@@ -199,7 +208,7 @@ function SignalSummaryRow({ signals }: { signals: NonNullable<DashboardState['si
 
   return (
     <div className="signal-summary-row reveal-up delay-1">
-      <span className={`signal-summary-chip ${trendClass}`}>ETH {trend}</span>
+      <span className={`signal-summary-chip ${trendClass}`}>ETH {isInsufficientData(trend) ? 'Collecting data' : trend}</span>
       <span className="signal-summary-divider" aria-hidden="true">&middot;</span>
       <span className="signal-summary-chip">Sentiment: {fg.fearGreedIndex} ({fg.label || sentimentLabel(fg.fearGreedIndex)})</span>
       <span className="signal-summary-divider" aria-hidden="true">&middot;</span>
