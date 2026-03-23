@@ -104,9 +104,17 @@ const DECISION_TOOL = {
  * Call Groq API with one retry on transient failure.
  * Extracted to avoid duplicating the API call + token tracking logic.
  */
-const MODELS = ['llama-3.3-70b-versatile'] as const;
+const MODELS = ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant'] as const;
+
+// Backoff: skip LLM calls for a cooldown period after rate limits
+let rateLimitCooldownUntil = 0;
 
 async function callGroqWithRetry(userMessage: string): Promise<AgentDecision> {
+  if (Date.now() < rateLimitCooldownUntil) {
+    const secsLeft = Math.ceil((rateLimitCooldownUntil - Date.now()) / 1000);
+    return holdDecision(`Rate limited, retrying in ${secsLeft}s`);
+  }
+
   const makeCall = async (model: string) => {
     const completion = await groq.chat.completions.create({
       model,
@@ -140,7 +148,12 @@ async function callGroqWithRetry(userMessage: string): Promise<AgentDecision> {
     try {
       return await makeCall(model);
     } catch (error) {
-      console.warn(`[AI Brain] ${model} failed:`, (error as Error).message?.slice(0, 100));
+      const msg = (error as Error).message ?? '';
+      console.warn(`[AI Brain] ${model} failed:`, msg.slice(0, 100));
+      if (msg.includes('429')) {
+        rateLimitCooldownUntil = Date.now() + 120_000; // back off 2 minutes
+        console.warn(`[AI Brain] Rate limited — cooling down for 120s`);
+      }
     }
   }
   throw new Error('All models exhausted');
